@@ -1,0 +1,30 @@
+# Go бинарные файлы
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Файлы тестов
+*.test
+
+# Папка vendor (зависимости)
+vendor/
+
+# Настройки IDE
+.vscode/
+.idea/
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Файлы окружения
+.env
+.env.local
+
+# Логи
+*.log
+
+# Docker-образы
+*.tar

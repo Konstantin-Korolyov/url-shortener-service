@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - основная база данных
+  postgres:
+    image: postgres:15-alpine  # Используем облегчённую версию
+    container_name: url-shortener-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: securepassword123
+      POSTGRES_DB: shortener_db
+    ports:
+      - "5432:5432"  # Пробрасываем порт на локальную машину
+    volumes:
+      # Сохраняем данные между перезапусками
+      - postgres_data:/var/lib/postgresql/data
+      # SQL-скрипты для инициализации (создадим позже)
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+    restart: unless-stopped  # Автоматически перезапускать
+
+  # Redis - для кеширования и счётчиков кликов
+  redis:
+    image: redis:7-alpine
+    container_name: url-shortener-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass redispassword123
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Kafka для обработки событий (клики по ссылкам)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - app-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"  # Для внутреннего общения
+      - "9093:9093"  # Для внешнего подключения
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - app-network
+
+  # pgAdmin - веб-интерфейс для управления БД (очень удобно!)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: url-shortener-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # RedisInsight - веб-интерфейс для Redis (опционально)
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/db
+    networks:
+      - app-network
+    restart: unless-stopped
+
+# Тома для сохранения данных
+volumes:
+  postgres_data:
+  redis_data:
+  redisinsight_data:
+
+# Сеть для связи между контейнерами
+networks:
+  app-network:
+    driver: bridge
