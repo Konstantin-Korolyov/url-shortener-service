@@ -1,24 +1,27 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/cache"
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/kafka"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/models"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/repository"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/utils"
 )
 
 type URLHandlers struct {
-	repo  *repository.URLRepository
-	cache *cache.RedisClient
+	repo     *repository.URLRepository
+	cache    *cache.RedisClient
+	producer *kafka.Producer // новый продюсер
 }
 
-func NewURLHandlers(repo *repository.URLRepository, cache *cache.RedisClient) *URLHandlers {
-	return &URLHandlers{repo: repo, cache: cache}
+func NewURLHandlers(repo *repository.URLRepository, cache *cache.RedisClient, producer *kafka.Producer) *URLHandlers {
+	return &URLHandlers{repo: repo, cache: cache, producer: producer}
 }
 
 type shortenRequest struct {
@@ -83,7 +86,6 @@ func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
-	// Извлекаем код из пути
 	code := r.PathValue("code")
 	if code == "" {
 		http.Error(w, "Missing code", http.StatusBadRequest)
@@ -94,18 +96,33 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 	url, err := h.cache.GetURL(r.Context(), code)
 	if err != nil {
 		log.Printf("Redis error: %v", err)
-		// Если ошибка Redis, продолжаем без кеша
 	}
 	if url != nil {
-		// Проверяем, активна ли ссылка и не истекла ли
 		if !url.IsActive || (url.ExpiresAt != nil && url.ExpiresAt.Before(time.Now())) {
 			http.Error(w, "URL expired or inactive", http.StatusGone)
 			return
 		}
-		// Асинхронно увеличиваем счётчик? Пока сделаем синхронно
+		// Увеличиваем счётчик
 		if err := h.repo.IncrementClicks(r.Context(), url.ID); err != nil {
 			log.Printf("Failed to increment clicks: %v", err)
 		}
+
+		// Отправляем событие в Kafka (асинхронно)
+		if h.producer != nil {
+			event := kafka.ClickEvent{
+				URLID:     url.ID,
+				IP:        r.RemoteAddr,
+				UserAgent: r.UserAgent(),
+				Referer:   r.Referer(),
+				Timestamp: time.Now(),
+			}
+			go func() {
+				if err := h.producer.PublishClick(context.Background(), event); err != nil {
+					log.Printf("Failed to publish click event: %v", err)
+				}
+			}()
+		}
+
 		http.Redirect(w, r, url.OriginalURL, http.StatusFound)
 		return
 	}
@@ -138,6 +155,22 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 	// Увеличиваем счётчик
 	if err := h.repo.IncrementClicks(r.Context(), url.ID); err != nil {
 		log.Printf("Failed to increment clicks: %v", err)
+	}
+
+	// Отправляем событие в Kafka (асинхронно)
+	if h.producer != nil {
+		event := kafka.ClickEvent{
+			URLID:     url.ID,
+			IP:        r.RemoteAddr,
+			UserAgent: r.UserAgent(),
+			Referer:   r.Referer(),
+			Timestamp: time.Now(),
+		}
+		go func() {
+			if err := h.producer.PublishClick(context.Background(), event); err != nil {
+				log.Printf("Failed to publish click event: %v", err)
+			}
+		}()
 	}
 
 	http.Redirect(w, r, url.OriginalURL, http.StatusFound)
