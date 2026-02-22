@@ -18,7 +18,12 @@ services:
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - app-network
-    restart: unless-stopped  # Автоматически перезапускать
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   # Redis - для кеширования и счётчиков кликов
   redis:
@@ -31,6 +36,11 @@ services:
       - redis_data:/data
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # Kafka для обработки событий (клики по ссылкам)
@@ -63,7 +73,7 @@ services:
     networks:
       - app-network
 
-  # pgAdmin - веб-интерфейс для управления БД (очень удобно!)
+  # pgAdmin - веб-интерфейс для управления БД
   pgadmin:
     image: dpage/pgadmin4
     container_name: url-shortener-pgadmin
@@ -86,6 +96,38 @@ services:
       - "5540:5540"
     volumes:
       - redisinsight_data:/db
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Сервис самого приложения (URL shortener)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: url-shortener-app
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: admin
+      DB_PASSWORD: securepassword123
+      DB_NAME: shortener_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redispassword123
+      REDIS_DB: 0
+      KAFKA_BROKER: kafka:9092   # внутренний адрес Kafka
+      KAFKA_TOPIC: clicks
+      SERVER_PORT: 8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
     networks:
       - app-network
     restart: unless-stopped

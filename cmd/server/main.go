@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/cache"
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/config"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/database"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/handlers"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/kafka"
@@ -17,13 +18,15 @@ import (
 )
 
 func main() {
+	cfg := config.Load()
+
 	// PostgreSQL
 	dbCfg := database.Config{
-		Host:     "localhost",
-		Port:     "5432",
-		User:     "admin",
-		Password: "securepassword123",
-		DBName:   "shortener_db",
+		Host:     cfg.DBHost,
+		Port:     cfg.DBPort,
+		User:     cfg.DBUser,
+		Password: cfg.DBPassword,
+		DBName:   cfg.DBName,
 	}
 	dbPool, err := database.NewPool(dbCfg)
 	if err != nil {
@@ -32,32 +35,33 @@ func main() {
 	defer dbPool.Close()
 
 	// Redis
-	redisClient, err := cache.NewRedisClient("localhost:6379", "redispassword123", 0)
+	redisAddr := cfg.RedisHost + ":" + cfg.RedisPort
+	redisClient, err := cache.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
 		log.Fatal("Failed to connect to Redis:", err)
 	}
 
 	// Kafka producer
-	producer := kafka.NewProducer([]string{"localhost:9093"}, "clicks")
+	producer := kafka.NewProducer(cfg.KafkaBrokers, cfg.KafkaTopic)
 	defer producer.Close()
 
 	// Репозиторий
 	urlRepo := repository.NewURLRepository(dbPool)
 
-	// Обработчики с продюсером
+	// Обработчики
 	urlHandlers := handlers.NewURLHandlers(urlRepo, redisClient, producer)
 
-	// Kafka consumer (запускаем в фоне)
+	// Kafka consumer
 	consumerCfg := kafka.ConsumerConfig{
-		Brokers: []string{"localhost:9093"},
-		Topic:   "clicks",
+		Brokers: cfg.KafkaBrokers,
+		Topic:   cfg.KafkaTopic,
 		GroupID: "click-consumers",
 	}
 	consumer := kafka.NewClickEventConsumer(consumerCfg, dbPool)
 	ctx, cancel := context.WithCancel(context.Background())
 	go consumer.Start(ctx)
 
-	// Маршруты
+	// HTTP сервер
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", homeHandler)
 	mux.HandleFunc("GET /health", healthHandler)
@@ -65,30 +69,26 @@ func main() {
 	mux.HandleFunc("GET /r/{code}", urlHandlers.Redirect)
 
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + cfg.ServerPort,
 		Handler: mux,
 	}
 
 	// Graceful shutdown
 	go func() {
-		log.Println("Server started on :8080")
+		log.Printf("Server started on port %s", cfg.ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()
 
-	// Ждём сигнала завершения
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
 
-	// Останавливаем consumer
 	cancel()
-	// Даём consumer время завершить обработку
 	time.Sleep(2 * time.Second)
 
-	// Завершаем HTTP сервер
 	ctxShutdown, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if err := server.Shutdown(ctxShutdown); err != nil {

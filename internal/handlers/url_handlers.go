@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -111,7 +112,7 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 		if h.producer != nil {
 			event := kafka.ClickEvent{
 				URLID:     url.ID,
-				IP:        r.RemoteAddr,
+				IP:        func() string { h, _, _ := net.SplitHostPort(r.RemoteAddr); return h }(),
 				UserAgent: r.UserAgent(),
 				Referer:   r.Referer(),
 				Timestamp: time.Now(),
