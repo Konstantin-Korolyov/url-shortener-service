@@ -97,8 +97,12 @@ SERVER_PORT
 Метрики Prometheus и дашборд Grafana.
 Структурированное логирование.
 Обработка коллизий коротких кодов.
+<<<<<<< HEAD
 CI/CD с GitHub Actions.
 
 
 Лицензия
 MIT (или другая)
+=======
+CI/CD с GitHub Actions.
+>>>>>>> 130625a14b40d30273740439fb0e6806aab1be2b
