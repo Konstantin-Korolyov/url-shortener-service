@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,10 +15,16 @@ import (
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/database"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/handlers"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/kafka"
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/middleware"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/repository"
 )
 
 func main() {
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	// Если нужен текст, можно заменить на:
+	// handler := slog.NewTextHandler(os.Stdout, nil)
+	slog.SetDefault(slog.New(handler))
+
 	cfg := config.Load()
 
 	// PostgreSQL
@@ -68,9 +75,11 @@ func main() {
 	mux.HandleFunc("POST /shorten", urlHandlers.Shorten)
 	mux.HandleFunc("GET /r/{code}", urlHandlers.Redirect)
 
+	// Оборачиваем весь маршрутизатор в rate limiter
+	rateLimitedHandler := middleware.RateLimit(mux)
 	server := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
-		Handler: mux,
+		Handler: rateLimitedHandler,
 	}
 
 	// Graceful shutdown

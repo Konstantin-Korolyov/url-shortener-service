@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -46,6 +46,6 @@ func NewPool(cfg Config) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("unable to ping database: %w", err)
 	}
 
-	log.Println("Connected to PostgreSQL")
+	slog.Info("Connected to PostgreSQL")
 	return pool, nil
 }

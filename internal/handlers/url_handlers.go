@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -67,14 +67,14 @@ func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
 
 	// Сохраняем в БД
 	if err := h.repo.Create(r.Context(), url); err != nil {
-		log.Printf("Failed to create URL: %v", err)
+		slog.Error("Failed to create URL", "err", err)
 		http.Error(w, "Failed to create short URL", http.StatusInternalServerError)
 		return
 	}
 
 	// Сохраняем в кеш (на 1 час) для быстрого доступа
 	if err := h.cache.SetURL(r.Context(), shortCode, url, time.Hour); err != nil {
-		log.Printf("Failed to cache URL: %v", err) // только логируем, не прерываем ответ
+		slog.Error("Failed to cache URL", "err", err)
 	}
 
 	// Формируем ответ
@@ -96,7 +96,7 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 	// 1. Пытаемся получить из кеша
 	url, err := h.cache.GetURL(r.Context(), code)
 	if err != nil {
-		log.Printf("Redis error: %v", err)
+		slog.Error("Redis error", "err", err)
 	}
 	if url != nil {
 		if !url.IsActive || (url.ExpiresAt != nil && url.ExpiresAt.Before(time.Now())) {
@@ -105,7 +105,7 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 		}
 		// Увеличиваем счётчик
 		if err := h.repo.IncrementClicks(r.Context(), url.ID); err != nil {
-			log.Printf("Failed to increment clicks: %v", err)
+			slog.Error("Failed to increment clicks", "err", err)
 		}
 
 		// Отправляем событие в Kafka (асинхронно)
@@ -119,7 +119,7 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 			}
 			go func() {
 				if err := h.producer.PublishClick(context.Background(), event); err != nil {
-					log.Printf("Failed to publish click event: %v", err)
+					slog.Error("Failed to publish click event", "err", err)
 				}
 			}()
 		}
@@ -131,7 +131,7 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 	// 2. Если в кеше нет, ищем в БД
 	url, err = h.repo.FindByShortCode(r.Context(), code)
 	if err != nil {
-		log.Printf("DB error: %v", err)
+		slog.Error("DB error", "err", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -150,26 +150,27 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 
 	// Сохраняем в кеш для будущих запросов
 	if err := h.cache.SetURL(r.Context(), code, url, time.Hour); err != nil {
-		log.Printf("Failed to cache URL: %v", err)
+		slog.Error("Failed to cache URL", "err", err)
 	}
 
 	// Увеличиваем счётчик
 	if err := h.repo.IncrementClicks(r.Context(), url.ID); err != nil {
-		log.Printf("Failed to increment clicks: %v", err)
+		slog.Error("Failed to increment clicks", "err", err)
 	}
 
 	// Отправляем событие в Kafka (асинхронно)
 	if h.producer != nil {
+		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 		event := kafka.ClickEvent{
 			URLID:     url.ID,
-			IP:        r.RemoteAddr,
+			IP:        ip,
 			UserAgent: r.UserAgent(),
 			Referer:   r.Referer(),
 			Timestamp: time.Now(),
 		}
 		go func() {
 			if err := h.producer.PublishClick(context.Background(), event); err != nil {
-				log.Printf("Failed to publish click event: %v", err)
+				slog.Error("Failed to publish click event", "err", err)
 			}
 		}()
 	}

@@ -3,7 +3,7 @@ package kafka
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/segmentio/kafka-go"
@@ -44,17 +44,16 @@ func (c *ClickEventConsumer) Start(ctx context.Context) {
 		default:
 			msg, err := c.reader.ReadMessage(ctx)
 			if err != nil {
-				log.Printf("Error reading message: %v", err)
+				slog.Error("Error reading message", "err", err)
 				continue
 			}
 			// Обрабатываем сообщение
 			if err := c.processMessage(ctx, msg); err != nil {
-				log.Printf("Failed to process message: %v", err)
-				// Здесь можно реализовать повторные попытки, но для простоты пропускаем
+				slog.Error("Failed to process message", "err", err)
 			} else {
 				// Сообщение успешно обработано, коммитим
 				if err := c.reader.CommitMessages(ctx, msg); err != nil {
-					log.Printf("Failed to commit message: %v", err)
+					slog.Error("Failed to commit message", "err", err)
 				}
 			}
 		}
@@ -78,7 +77,7 @@ func (c *ClickEventConsumer) processMessage(ctx context.Context, msg kafka.Messa
 		event.IP,
 		event.UserAgent,
 		event.Referer,
-		nil, // country_code
+		nil,
 		event.Timestamp,
 	)
 	return err
