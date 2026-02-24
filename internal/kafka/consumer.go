@@ -77,7 +77,7 @@ func (c *ClickEventConsumer) processMessage(ctx context.Context, msg kafka.Messa
 		event.IP,
 		event.UserAgent,
 		event.Referer,
-		nil,
+		event.CountryCode,
 		event.Timestamp,
 	)
 	return err

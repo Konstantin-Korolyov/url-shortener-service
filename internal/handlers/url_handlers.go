@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/cache"
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/geo"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/kafka"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/middleware"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/models"
@@ -129,12 +130,20 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 
 		// Отправляем событие в Kafka (асинхронно)
 		if h.producer != nil {
+			ipRaw := r.RemoteAddr
+			ip, _, err := net.SplitHostPort(ipRaw)
+			if err != nil {
+				ip = ipRaw
+			}
+			countryCode := geo.GetCountryCode(ip)
+
 			event := kafka.ClickEvent{
-				URLID:     url.ID,
-				IP:        func() string { h, _, _ := net.SplitHostPort(r.RemoteAddr); return h }(),
-				UserAgent: r.UserAgent(),
-				Referer:   r.Referer(),
-				Timestamp: time.Now(),
+				URLID:       url.ID,
+				IP:          ip,
+				UserAgent:   r.UserAgent(),
+				Referer:     r.Referer(),
+				Timestamp:   time.Now(),
+				CountryCode: countryCode,
 			}
 			go func() {
 				if err := h.producer.PublishClick(context.Background(), event); err != nil {
@@ -180,12 +189,15 @@ func (h *URLHandlers) Redirect(w http.ResponseWriter, r *http.Request) {
 	// Отправляем событие в Kafka (асинхронно)
 	if h.producer != nil {
 		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		countryCode := geo.GetCountryCode(ip)
+
 		event := kafka.ClickEvent{
-			URLID:     url.ID,
-			IP:        ip,
-			UserAgent: r.UserAgent(),
-			Referer:   r.Referer(),
-			Timestamp: time.Now(),
+			URLID:       url.ID,
+			IP:          ip,
+			UserAgent:   r.UserAgent(),
+			Referer:     r.Referer(),
+			Timestamp:   time.Now(),
+			CountryCode: countryCode,
 		}
 		go func() {
 			if err := h.producer.PublishClick(context.Background(), event); err != nil {

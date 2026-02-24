@@ -10,11 +10,12 @@ import (
 
 // ClickEvent структура события клика (будет отправляться в Kafka)
 type ClickEvent struct {
-	URLID     int64     `json:"url_id"`
-	IP        string    `json:"ip"`
-	UserAgent string    `json:"user_agent"`
-	Referer   string    `json:"referer"`
-	Timestamp time.Time `json:"timestamp"`
+	URLID       int64     `json:"url_id"`
+	IP          string    `json:"ip"`
+	UserAgent   string    `json:"user_agent"`
+	Referer     string    `json:"referer"`
+	Timestamp   time.Time `json:"timestamp"`
+	CountryCode string    `json:"country_code"`
 }
 
 // Producer обёртка над kafka.Writer

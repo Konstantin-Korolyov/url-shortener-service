@@ -13,6 +13,7 @@ import (
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/cache"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/config"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/database"
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/geo"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/handlers"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/kafka"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/middleware"
@@ -46,6 +47,12 @@ func main() {
 	redisClient, err := cache.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
 		log.Fatal("Failed to connect to Redis:", err)
+	}
+
+	// Инициализация GeoIP
+	if err := geo.InitGeoDB("data/GeoLite2-Country.mmdb"); err != nil {
+		slog.Warn("Failed to init GeoIP database", "err", err)
+		// Продолжаем работу без геоданных
 	}
 
 	// Kafka producer

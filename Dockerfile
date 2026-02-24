@@ -20,11 +20,12 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-# Копируем бинарник из builder
 COPY --from=builder /app/url-shortener .
 
-# Открываем порт
+# Создаём папку data и копируем базу GeoIP
+RUN mkdir -p data
+COPY data/GeoLite2-Country.mmdb ./data/
+
 EXPOSE 8080
 
-# Запускаем
 CMD ["./url-shortener"]
