@@ -10,6 +10,7 @@ import (
 
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/cache"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/kafka"
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/middleware"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/models"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/repository"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/utils"
@@ -34,7 +35,7 @@ type shortenResponse struct {
 }
 
 func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
-	// Проверяем метод (хотя mux уже должен был это сделать, но для надёжности)
+	// Проверяем метод
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -51,6 +52,12 @@ func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// --- Извлекаем user_id из контекста (если есть) ---
+	var userID *int64
+	if uid, ok := r.Context().Value(middleware.UserIDKey).(int64); ok {
+		userID = &uid
+	}
+
 	const maxAttempts = 5
 	var url *models.URL
 	var err error
@@ -60,7 +67,7 @@ func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
 		url = &models.URL{
 			OriginalURL: req.URL,
 			ShortCode:   shortCode,
-			UserID:      nil, // пока без пользователя
+			UserID:      userID, // теперь заполняем, если есть
 			Clicks:      0,
 			CreatedAt:   time.Now(),
 			ExpiresAt:   nil,
@@ -70,12 +77,11 @@ func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			break
 		}
-		// Проверяем, является ли ошибка нарушением уникальности
+		// Проверяем на уникальность
 		if repository.IsUniqueViolation(err) {
 			slog.Warn("Short code collision, retrying", "code", shortCode, "attempt", i+1)
 			continue
 		}
-		// Если это другая ошибка, выходим из цикла
 		break
 	}
 
@@ -85,12 +91,12 @@ func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Сохраняем в кеш (на 1 час) для быстрого доступа
+	// Сохраняем в кеш
 	if err := h.cache.SetURL(r.Context(), url.ShortCode, url, time.Hour); err != nil {
 		slog.Error("Failed to cache URL", "err", err)
 	}
 
-	// Формируем ответ
+	// Ответ
 	resp := shortenResponse{
 		ShortURL: "http://localhost:8080/r/" + url.ShortCode,
 	}
