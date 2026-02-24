@@ -4,10 +4,20 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Konstantin-Korolyov/url-shortener-go/internal/models" // замени на свой путь
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/models"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// IsUniqueViolation проверяет, является ли ошибка нарушением уникальности (код 23505)
+func IsUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
+}
 
 // URLRepository предоставляет методы для работы с таблицей urls
 type URLRepository struct {

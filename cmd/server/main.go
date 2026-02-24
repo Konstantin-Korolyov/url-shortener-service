@@ -68,11 +68,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	go consumer.Start(ctx)
 
-	// HTTP сервер
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", homeHandler)
 	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("POST /shorten", urlHandlers.Shorten)
+
+	// Защищённый эндпоинт
+	mux.Handle("POST /shorten", middleware.AuthMiddleware(dbPool)(http.HandlerFunc(urlHandlers.Shorten)))
+
 	mux.HandleFunc("GET /r/{code}", urlHandlers.Redirect)
 
 	// Оборачиваем весь маршрутизатор в rate limiter
