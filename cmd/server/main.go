@@ -18,12 +18,12 @@ import (
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/kafka"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/middleware"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/repository"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
+	// Настройка логирования в JSON
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
-	// Если нужен текст, можно заменить на:
-	// handler := slog.NewTextHandler(os.Stdout, nil)
 	slog.SetDefault(slog.New(handler))
 
 	cfg := config.Load()
@@ -84,11 +84,16 @@ func main() {
 
 	mux.HandleFunc("GET /r/{code}", urlHandlers.Redirect)
 
-	// Оборачиваем весь маршрутизатор в rate limiter
-	rateLimitedHandler := middleware.RateLimit(mux)
+	// Добавляем эндпоинт для метрик Prometheus
+	mux.Handle("GET /metrics", promhttp.Handler())
+
+	// Композиция middleware: сначала метрики, потом rate limiter
+	httpHandler := middleware.MetricsMiddleware(mux)
+	httpHandler = middleware.RateLimit(httpHandler)
+
 	server := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
-		Handler: rateLimitedHandler,
+		Handler: httpHandler,
 	}
 
 	// Graceful shutdown
