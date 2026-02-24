@@ -51,35 +51,48 @@ func (h *URLHandlers) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Генерируем короткий код (6 символов)
-	shortCode := utils.RandomString(6)
+	const maxAttempts = 5
+	var url *models.URL
+	var err error
 
-	// Создаём модель URL
-	url := &models.URL{
-		OriginalURL: req.URL,
-		ShortCode:   shortCode,
-		UserID:      nil, // пока без пользователя
-		Clicks:      0,
-		CreatedAt:   time.Now(),
-		ExpiresAt:   nil, // пока без срока
-		IsActive:    true,
+	for i := 0; i < maxAttempts; i++ {
+		shortCode := utils.RandomString(6)
+		url = &models.URL{
+			OriginalURL: req.URL,
+			ShortCode:   shortCode,
+			UserID:      nil, // пока без пользователя
+			Clicks:      0,
+			CreatedAt:   time.Now(),
+			ExpiresAt:   nil,
+			IsActive:    true,
+		}
+		err = h.repo.Create(r.Context(), url)
+		if err == nil {
+			break
+		}
+		// Проверяем, является ли ошибка нарушением уникальности
+		if repository.IsUniqueViolation(err) {
+			slog.Warn("Short code collision, retrying", "code", shortCode, "attempt", i+1)
+			continue
+		}
+		// Если это другая ошибка, выходим из цикла
+		break
 	}
 
-	// Сохраняем в БД
-	if err := h.repo.Create(r.Context(), url); err != nil {
-		slog.Error("Failed to create URL", "err", err)
-		http.Error(w, "Failed to create short URL", http.StatusInternalServerError)
+	if err != nil {
+		slog.Error("Failed to create URL after attempts", "err", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	// Сохраняем в кеш (на 1 час) для быстрого доступа
-	if err := h.cache.SetURL(r.Context(), shortCode, url, time.Hour); err != nil {
+	if err := h.cache.SetURL(r.Context(), url.ShortCode, url, time.Hour); err != nil {
 		slog.Error("Failed to cache URL", "err", err)
 	}
 
 	// Формируем ответ
 	resp := shortenResponse{
-		ShortURL: "http://localhost:8080/r/" + shortCode,
+		ShortURL: "http://localhost:8080/r/" + url.ShortCode,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
