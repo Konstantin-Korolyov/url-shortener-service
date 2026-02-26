@@ -10,11 +10,12 @@ import (
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/database"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/models"
 	"github.com/Konstantin-Korolyov/url-shortener-go/internal/repository"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ory/dockertest/v3"
 	"github.com/stretchr/testify/assert"
 )
 
-var testDB *database.Pool
+var testDB *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	// Поднимаем PostgreSQL в Docker
@@ -47,8 +48,14 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Could not connect to docker: %s", err)
 	}
 
-	// Накатываем схему (можно из init.sql)
-	// ... выполнить миграции
+	// Накатываем схему из init.sql
+	initSQL, err := os.ReadFile("../../docker/postgres/init.sql")
+	if err != nil {
+		log.Fatal("Failed to read init.sql:", err)
+	}
+	if _, err := testDB.Exec(context.Background(), string(initSQL)); err != nil {
+		log.Fatal("Failed to execute init.sql:", err)
+	}
 
 	code := m.Run()
 

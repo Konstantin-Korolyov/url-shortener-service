@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/yourusername/url-shortener-go/internal/metrics"
+	"github.com/Konstantin-Korolyov/url-shortener-go/internal/metrics"
 )
 
 // MetricsMiddleware собирает метрики по запросам
