@@ -76,15 +76,24 @@ func main() {
 	go consumer.Start(ctx)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", homeHandler)
+
+	// Главная страница (HTML форма)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, "./static/index.html")
+	})
+
+	// Публичные эндпоинты
 	mux.HandleFunc("GET /health", healthHandler)
 
-	// Защищённый эндпоинт
+	// Защищённые эндпоинты
 	mux.Handle("POST /shorten", middleware.AuthMiddleware(dbPool)(http.HandlerFunc(urlHandlers.Shorten)))
-
 	mux.HandleFunc("GET /r/{code}", urlHandlers.Redirect)
 
-	// Добавляем эндпоинт для метрик Prometheus
+	// Метрики
 	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// Композиция middleware: сначала метрики, потом rate limiter
@@ -118,10 +127,6 @@ func main() {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 	log.Println("Server exited")
-}
-
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("URL Shortener Service"))
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

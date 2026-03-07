@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сокращатель ссылок</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: none;
+        }
+        .short-url {
+            color: #007bff;
+            text-decoration: underline;
+            word-break: break-all;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Сервис сокращения ссылок</h1>
+    <p>Вставьте длинную ссылку, и мы сделаем её короткой.</p>
+    <input type="url" id="url" placeholder="https://example.com/very-long-url" required>
+    <button id="shorten">Сократить</button>
+    <div id="result">
+        <p>Ваша короткая ссылка:</p>
+        <p><a href="#" id="short-link" class="short-url" target="_blank"></a></p>
+        <p><button id="copy">Копировать</button></p>
+    </div>
+
+    <script>
+        document.getElementById('shorten').addEventListener('click', async () => {
+            const urlInput = document.getElementById('url');
+            const resultDiv = document.getElementById('result');
+            const shortLink = document.getElementById('short-link');
+            
+            const url = urlInput.value.trim();
+            if (!url) {
+                alert('Введите URL');
+                return;
+            }
+
+            try {
+                const response = await fetch('/shorten', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': 'test_api_key_123' // тестовый ключ
+                    },
+                    body: JSON.stringify({ url })
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error || 'Ошибка сервера');
+                }
+
+                const data = await response.json();
+                shortLink.href = data.short_url;
+                shortLink.textContent = data.short_url;
+                resultDiv.style.display = 'block';
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        });
+
+        document.getElementById('copy').addEventListener('click', () => {
+            const shortLink = document.getElementById('short-link').href;
+            navigator.clipboard.writeText(shortLink);
+            alert('Скопировано!');
+        });
+    </script>
+</body>
+</html>

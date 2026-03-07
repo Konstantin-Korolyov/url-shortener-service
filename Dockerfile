@@ -20,11 +20,15 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
+# Копируем бинарник из builder
 COPY --from=builder /app/url-shortener .
 
-# Создаём папку data и копируем базу GeoIP
+# Копируем статические файлы (папку static)
+COPY --from=builder /app/static ./static
+
+# Создаём папку data (но не копируем GeoIP, так как файл может отсутствовать)
 RUN mkdir -p data
-COPY data/GeoLite2-Country.mmdb ./data/
+# Опционально: можно скопировать, если файл есть, но мы пропускаем
 
 EXPOSE 8080
 
