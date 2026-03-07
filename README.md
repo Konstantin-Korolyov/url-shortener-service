@@ -1,6 +1,4 @@
-Структура:
 
-markdown
 # URL Shortener Service
 
 Production-ready сервис сокращения ссылок с аналитикой, построенный на **Go**, **PostgreSQL**, **Redis** и **Kafka**.
